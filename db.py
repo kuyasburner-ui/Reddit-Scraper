@@ -33,34 +33,41 @@ def _sqlite():
             params     TEXT,
             results    TEXT,
             session_id TEXT,
-            created_at TEXT
+            created_at TEXT,
+            ip_address TEXT
         )
     """)
+    # Add column if upgrading from old schema
+    try:
+        conn.execute("ALTER TABLE scrapes ADD COLUMN ip_address TEXT")
+    except Exception:
+        pass
     conn.commit()
     return conn
 
 
 # ── Write ────────────────────────────────────────────────────────────────────
 
-def save_scrape(query, params, results, session_id="unknown"):
+def save_scrape(query, params, results, session_id="unknown", ip_address="unknown"):
     scrape_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
     sb = _supabase()
     if sb:
         sb.table("scrapes").insert({
-            "id": scrape_id,
-            "query": query,
-            "params": params,
-            "results": results,
+            "id":         scrape_id,
+            "query":      query,
+            "params":     params,
+            "results":    results,
             "session_id": session_id,
             "created_at": now,
+            "ip_address": ip_address,
         }).execute()
     else:
         conn = _sqlite()
         conn.execute(
-            "INSERT INTO scrapes VALUES (?,?,?,?,?,?)",
-            (scrape_id, query, json.dumps(params), json.dumps(results), session_id, now),
+            "INSERT INTO scrapes VALUES (?,?,?,?,?,?,?)",
+            (scrape_id, query, json.dumps(params), json.dumps(results), session_id, now, ip_address),
         )
         conn.commit()
         conn.close()
@@ -68,17 +75,28 @@ def save_scrape(query, params, results, session_id="unknown"):
 
 # ── Read ─────────────────────────────────────────────────────────────────────
 
-def list_scrapes():
-    """Return all scrapes newest-first. Each row includes parsed results."""
+def list_scrapes(ip_address=None):
+    """Return scrapes newest-first. Filters by ip_address unless None (admin)."""
     sb = _supabase()
     if sb:
-        resp = sb.table("scrapes").select("*").order("created_at", desc=True).execute()
+        q = sb.table("scrapes").select("*").order("created_at", desc=True)
+        if ip_address is not None:
+            q = q.eq("ip_address", ip_address)
+        resp = q.execute()
         return [_normalize_sb(r) for r in resp.data]
     else:
         conn = _sqlite()
-        rows = conn.execute(
-            "SELECT id,query,params,results,session_id,created_at FROM scrapes ORDER BY created_at DESC"
-        ).fetchall()
+        if ip_address is not None:
+            rows = conn.execute(
+                "SELECT id,query,params,results,session_id,created_at,ip_address "
+                "FROM scrapes WHERE ip_address=? ORDER BY created_at DESC",
+                (ip_address,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id,query,params,results,session_id,created_at,ip_address "
+                "FROM scrapes ORDER BY created_at DESC"
+            ).fetchall()
         conn.close()
         return [_normalize_sqlite(r) for r in rows]
 
@@ -91,7 +109,8 @@ def get_scrape(scrape_id):
     else:
         conn = _sqlite()
         row = conn.execute(
-            "SELECT id,query,params,results,session_id,created_at FROM scrapes WHERE id=?",
+            "SELECT id,query,params,results,session_id,created_at,ip_address "
+            "FROM scrapes WHERE id=?",
             (scrape_id,),
         ).fetchone()
         conn.close()
@@ -105,12 +124,13 @@ def _normalize_sb(r):
     if isinstance(results, str):
         results = json.loads(results)
     return {
-        "id": r["id"],
-        "query": r["query"],
-        "params": r.get("params") or {},
-        "results": results,
+        "id":         r["id"],
+        "query":      r["query"],
+        "params":     r.get("params") or {},
+        "results":    results,
         "session_id": r.get("session_id", ""),
         "created_at": r.get("created_at", ""),
+        "ip_address": r.get("ip_address", ""),
         "post_count": len(results),
     }
 
@@ -118,11 +138,12 @@ def _normalize_sb(r):
 def _normalize_sqlite(row):
     results = json.loads(row[3]) if row[3] else []
     return {
-        "id": row[0],
-        "query": row[1],
-        "params": json.loads(row[2]) if row[2] else {},
-        "results": results,
+        "id":         row[0],
+        "query":      row[1],
+        "params":     json.loads(row[2]) if row[2] else {},
+        "results":    results,
         "session_id": row[4] or "",
         "created_at": row[5] or "",
+        "ip_address": row[6] or "" if len(row) > 6 else "",
         "post_count": len(results),
     }

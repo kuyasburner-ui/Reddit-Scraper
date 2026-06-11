@@ -16,6 +16,29 @@ st.set_page_config(
 inject_css()
 navbar("history")
 
+
+def get_client_ip():
+    try:
+        headers = st.context.headers
+        xff = headers.get("X-Forwarded-For", "")
+        if xff:
+            return xff.split(",")[0].strip()
+        return headers.get("X-Real-Ip", headers.get("Remote-Addr", "unknown"))
+    except Exception:
+        return "unknown"
+
+
+# Admin check — admins see all history unfiltered
+_token = st.query_params.get("token", "")
+_admin_token = ""
+try:
+    _admin_token = st.secrets.get("ADMIN_TOKEN", "")
+except Exception:
+    pass
+_is_admin = bool(_token and _admin_token and _token == _admin_token)
+
+client_ip = None if _is_admin else get_client_ip()
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def results_to_df(results):
@@ -66,7 +89,7 @@ hero(
     subtitle="Browse and re-download every past scrape.",
 )
 
-scrapes = db.list_scrapes()
+scrapes = db.list_scrapes(ip_address=client_ip)
 
 if not scrapes:
     st.info("No history yet — run your first scrape on the home page.")
