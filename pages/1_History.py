@@ -71,6 +71,37 @@ def results_to_txt(query, results):
     return "\n".join(lines)
 
 
+def results_to_md(query, results):
+    lines = [
+        f"# Reddit Scrape: {query}",
+        f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  ",
+        f"**Posts:** {len(results)}",
+        "",
+    ]
+    for i, p in enumerate(results, 1):
+        lines += [
+            f"---",
+            f"## {i}. {p.get('title', '')}",
+            f"**Subreddit:** r/{p.get('subreddit', '')} &nbsp;|&nbsp; "
+            f"**Author:** u/{p.get('author', '')} &nbsp;|&nbsp; "
+            f"**Score:** {p.get('score', '')}  ",
+            f"**Link:** {p.get('url', '')}",
+            "",
+        ]
+        if p.get("selftext"):
+            lines += [f"### Post Body", p["selftext"], ""]
+        comments = p.get("comments", [])
+        if comments:
+            lines.append(f"### Comments ({len(comments)})")
+            for j, c in enumerate(comments, 1):
+                lines += [
+                    f"**{j}. u/{c['author']}** ({c['score']} pts)",
+                    f"> {c['body'].replace(chr(10), '  ' + chr(10) + '> ')}",
+                    "",
+                ]
+    return "\n".join(lines)
+
+
 # ── Page ──────────────────────────────────────────────────────────────────────
 
 hero(
@@ -163,7 +194,7 @@ for s in scrapes:
         import re
         slug = re.sub(r"[^\w\s-]", "", s["query"]).strip().replace(" ", "_")
         base = f"{slug}_{len(results)}"
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.download_button(
                 "Download CSV",
@@ -180,6 +211,15 @@ for s in scrapes:
                 file_name=f"{base}.txt",
                 mime="text/plain",
                 key=f"txt_{s['id']}",
+                use_container_width=True,
+            )
+        with col3:
+            st.download_button(
+                "Download MD",
+                data=results_to_md(s["query"], results).encode("utf-8"),
+                file_name=f"{base}.md",
+                mime="text/markdown",
+                key=f"md_{s['id']}",
                 use_container_width=True,
             )
 
