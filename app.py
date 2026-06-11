@@ -63,17 +63,23 @@ def results_to_txt(query, results):
     return "\n".join(lines)
 
 
+def safe_filename(query, count):
+    import re
+    slug = re.sub(r"[^\w\s-]", "", query).strip().replace(" ", "_")
+    return f"{slug}_{count}"
+
+
 def download_buttons(query, results, key_prefix=""):
     if not results:
         return
     df = results_to_df(results)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base = safe_filename(query, len(results))
     col1, col2 = st.columns(2)
     with col1:
         st.download_button(
             "Download CSV",
             data=df.to_csv(index=False).encode("utf-8"),
-            file_name=f"reddit_{ts}.csv",
+            file_name=f"{base}.csv",
             mime="text/csv",
             key=f"{key_prefix}_csv",
             use_container_width=True,
@@ -82,7 +88,7 @@ def download_buttons(query, results, key_prefix=""):
         st.download_button(
             "Download TXT",
             data=results_to_txt(query, results).encode("utf-8"),
-            file_name=f"reddit_{ts}.txt",
+            file_name=f"{base}.txt",
             mime="text/plain",
             key=f"{key_prefix}_txt",
             use_container_width=True,

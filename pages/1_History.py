@@ -143,13 +143,15 @@ for s in scrapes:
         if len(results) > 20:
             st.caption(f"Showing first 20 of {len(results)}. Download for complete data.")
 
-        safe_date = date_str.replace(" ", "_").replace(":", "")
+        import re
+        slug = re.sub(r"[^\w\s-]", "", s["query"]).strip().replace(" ", "_")
+        base = f"{slug}_{len(results)}"
         col1, col2 = st.columns(2)
         with col1:
             st.download_button(
                 "Download CSV",
                 data=df.to_csv(index=False).encode("utf-8"),
-                file_name=f"reddit_{safe_date}.csv",
+                file_name=f"{base}.csv",
                 mime="text/csv",
                 key=f"csv_{s['id']}",
                 use_container_width=True,
@@ -158,7 +160,7 @@ for s in scrapes:
             st.download_button(
                 "Download TXT",
                 data=results_to_txt(s["query"], results).encode("utf-8"),
-                file_name=f"reddit_{safe_date}.txt",
+                file_name=f"{base}.txt",
                 mime="text/plain",
                 key=f"txt_{s['id']}",
                 use_container_width=True,
