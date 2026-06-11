@@ -1,6 +1,5 @@
 import requests
 import time
-import random
 
 _API = "https://api.pullpush.io/reddit/search"
 _UA  = "RedditScraper/1.0"
@@ -79,7 +78,6 @@ def scrape_stream(query, num_posts, include_comments):
 
     for i, post in enumerate(posts, 1):
         if include_comments and post.get("id"):
-            time.sleep(random.uniform(0.3, 0.7))
             post["comments"] = get_comments(post["id"])
         else:
             post["comments"] = []

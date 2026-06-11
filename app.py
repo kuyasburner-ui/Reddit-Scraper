@@ -208,8 +208,6 @@ if not query.strip():
     st.error("Please enter a search query.")
     st.stop()
 
-import time, random
-
 results  = []
 _status  = st.empty()
 _pbar    = st.empty()
@@ -237,7 +235,6 @@ _pbar.progress(0.0, text=f"Found {total} posts — fetching details…")
 
 for i, post in enumerate(posts, 1):
     if include_comments and post.get("id"):
-        time.sleep(random.uniform(0.3, 0.7))
         post["comments"] = get_comments(post["id"])
     else:
         post["comments"] = []
