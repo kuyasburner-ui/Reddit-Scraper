@@ -91,6 +91,9 @@ hero(
 
 scrapes = db.list_scrapes(ip_address=client_ip)
 
+# Temporary debug — remove after confirming IP match
+st.caption(f"DEBUG — detected IP: `{client_ip}`")
+
 if not scrapes:
     st.info("No history yet — run your first scrape on the home page.")
     st.stop()
