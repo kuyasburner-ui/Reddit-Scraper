@@ -1,160 +1,115 @@
-#!/usr/bin/env python3
 import requests
-from bs4 import BeautifulSoup
 import time
 import random
 
-BASE = "https://old.reddit.com"
+BASE = "https://www.reddit.com"
+
+HEADERS = {
+    "User-Agent": "RedditScraper/1.0 (research tool; contact kuyasburner@gmail.com)",
+    "Accept": "application/json",
+}
 
 
-def create_session():
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0",
-        "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-    })
-    try:
-        session.get(f"{BASE}/", timeout=15)
-        time.sleep(random.uniform(1.0, 2.0))
-    except Exception:
-        pass
-    return session
-
-
-def fetch_with_retry(session, url, params=None, retries=3):
+def _get(url, params=None, retries=3):
     for attempt in range(retries):
         try:
-            resp = session.get(url, params=params, timeout=15)
+            resp = requests.get(url, params=params, headers=HEADERS, timeout=15)
+            if resp.status_code == 429:
+                time.sleep((attempt + 1) * 10)
+                continue
             resp.raise_for_status()
             return resp
-        except requests.exceptions.HTTPError as e:
-            if resp.status_code in (429, 403):
-                wait = (attempt + 1) * 5
-                time.sleep(wait)
-            else:
+        except requests.exceptions.RequestException:
+            if attempt == retries - 1:
                 raise
-    raise Exception(f"Failed after {retries} retries: {url}")
+            time.sleep((attempt + 1) * 3)
 
 
-def search_posts(session, query, limit):
+def search_posts(query, limit):
     posts = []
     after = None
-    page_size = 100
 
     while len(posts) < limit:
-        fetch = min(page_size, limit - len(posts))
-        params = {"q": query, "sort": "relevance", "limit": fetch, "type": "link"}
+        params = {
+            "q": query,
+            "sort": "relevance",
+            "limit": min(100, limit - len(posts)),
+            "type": "link",
+            "raw_json": 1,
+        }
         if after:
             params["after"] = after
 
-        resp = fetch_with_retry(session, f"{BASE}/search", params=params)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        divs = soup.select("div.search-result")
+        resp = _get(f"{BASE}/search.json", params=params)
+        data = resp.json().get("data", {})
+        children = data.get("children", [])
 
-        if not divs:
+        if not children:
             break
 
-        last_fullname = None
-        for div in divs:
-            title_el = div.select_one("a.search-title")
-            if not title_el:
-                continue
-
-            href = title_el.get("href", "")
-            if not href.startswith("http"):
-                href = BASE + href
-
-            score_el = div.select_one("span.search-score")
-            author_el = div.select_one("a.author")
-            sub_el = div.select_one("a.search-subreddit-link")
-            last_fullname = div.get("data-fullname", "")
-
+        for child in children:
+            p = child.get("data", {})
             posts.append({
-                "title": title_el.get_text(strip=True),
-                "url": href,
-                "author": author_el.get_text(strip=True) if author_el else "[deleted]",
-                "subreddit": sub_el.get_text(strip=True).lstrip("r/") if sub_el else "",
-                "score": score_el.get_text(strip=True) if score_el else "?",
+                "id":        p.get("id", ""),
+                "title":     p.get("title", ""),
+                "url":       p.get("url", ""),
+                "permalink": p.get("permalink", ""),
+                "author":    p.get("author", "[deleted]"),
+                "subreddit": p.get("subreddit", ""),
+                "score":     str(p.get("score", 0)),
+                "selftext":  p.get("selftext", ""),
+                "is_self":   p.get("is_self", False),
             })
-
             if len(posts) >= limit:
                 break
 
-        after = last_fullname
-        if not after or len(divs) < fetch:
+        after = data.get("after")
+        if not after:
             break
 
-        time.sleep(random.uniform(1.5, 3.0))
+        time.sleep(random.uniform(1.0, 2.0))
 
     return posts
 
 
-def get_post_data(session, url, max_comments=20):
-    if "old.reddit.com" not in url:
-        url = url.replace("www.reddit.com", "old.reddit.com").replace("reddit.com", "old.reddit.com")
-
-    time.sleep(random.uniform(0.75, 1.5))
+def get_comments(permalink, max_comments=20):
+    url = f"{BASE}{permalink}.json"
     try:
-        resp = fetch_with_retry(session, url)
+        resp = _get(url, params={"limit": max_comments, "depth": 2, "raw_json": 1})
+        listing = resp.json()
+        if len(listing) < 2:
+            return []
+
+        comments = []
+        for child in listing[1]["data"]["children"]:
+            if child.get("kind") != "t1":
+                continue
+            c = child["data"]
+            body = c.get("body", "")
+            if not body or body in ("[deleted]", "[removed]"):
+                continue
+            comments.append({
+                "author": c.get("author", "[deleted]"),
+                "score":  str(c.get("score", 0)),
+                "body":   body,
+            })
+            if len(comments) >= max_comments:
+                break
+        return comments
     except Exception:
-        return "", []
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    selftext = ""
-    post_thing = soup.select_one("div.thing.link")
-    if post_thing:
-        body_el = post_thing.select_one("div.usertext-body .md")
-        if body_el:
-            selftext = body_el.get_text(separator="\n", strip=True)
-
-    comments = []
-    for comment_div in soup.select("div.thing.comment"):
-        author_el = comment_div.select_one("a.author")
-        score_el = comment_div.select_one("span.score")
-        body_el = comment_div.select_one("div.usertext-body .md")
-
-        if not body_el:
-            continue
-        body = body_el.get_text(separator="\n", strip=True)
-        if not body or body in ("[deleted]", "[removed]"):
-            continue
-
-        score_text = score_el.get("title", score_el.get_text(strip=True)) if score_el else "?"
-        comments.append({
-            "author": author_el.get_text(strip=True) if author_el else "[deleted]",
-            "score": score_text,
-            "body": body,
-        })
-
-        if len(comments) >= max_comments:
-            break
-
-    return selftext, comments
+        return []
 
 
 def scrape_stream(query, num_posts, include_comments):
     """Generator yielding (current_index, total, post_dict) for live UI updates."""
-    session = create_session()
-    posts_meta = search_posts(session, query, num_posts)
-    total = len(posts_meta)
+    posts = search_posts(query, num_posts)
+    total = len(posts)
 
-    for i, post_meta in enumerate(posts_meta, 1):
-        selftext, comments = get_post_data(session, post_meta["url"])
-        yield i, total, {
-            **post_meta,
-            "selftext": selftext,
-            "comments": comments if include_comments else [],
-        }
+    for i, post in enumerate(posts, 1):
+        if include_comments and post.get("permalink"):
+            time.sleep(random.uniform(0.5, 1.0))
+            post["comments"] = get_comments(post["permalink"])
+        else:
+            post["comments"] = []
+
+        yield i, total, post
