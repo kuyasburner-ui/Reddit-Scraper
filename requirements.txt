@@ -1,5 +1,5 @@
 streamlit>=1.32.0
 requests
 beautifulsoup4
-supabase
+supabase>=2.3.0
 pandas
