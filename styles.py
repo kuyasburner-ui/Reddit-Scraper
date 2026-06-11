@@ -583,10 +583,11 @@ _RADAR_HTML = (
 )
 
 
-def navbar(current: str = "home"):
+def navbar(current: str = "home", uid: str = ""):
+    history_href = f"/History?uid={uid}" if uid else "/History"
     links = [
-        ("home",    "/",         "Home"),
-        ("history", "/History",  "Scan History"),
+        ("home",    "/",           "Home"),
+        ("history", history_href,  "Scan History"),
     ]
     links_html = "".join(
         f'<a href="{href}" class="r-nav-link {"active" if key == current else ""}"'

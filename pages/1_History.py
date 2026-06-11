@@ -14,18 +14,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 inject_css()
-navbar("history")
-
-
-def get_client_ip():
-    try:
-        headers = st.context.headers
-        xff = headers.get("X-Forwarded-For", "")
-        if xff:
-            return xff.split(",")[0].strip()
-        return headers.get("X-Real-Ip", headers.get("Remote-Addr", "unknown"))
-    except Exception:
-        return "unknown"
+navbar("history", uid=st.query_params.get("uid", ""))
 
 
 # Admin check — admins see all history unfiltered
@@ -37,7 +26,8 @@ except Exception:
     pass
 _is_admin = bool(_token and _admin_token and _token == _admin_token)
 
-client_ip = None if _is_admin else get_client_ip()
+# uid from URL — None means admin (no filter)
+uid = None if _is_admin else st.query_params.get("uid", "")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -89,10 +79,11 @@ hero(
     subtitle="Browse and re-download every past scrape.",
 )
 
-scrapes = db.list_scrapes(ip_address=client_ip)
+scrapes = db.list_scrapes(ip_address=uid)
 
-# Temporary debug — remove after confirming IP match
-st.caption(f"DEBUG — detected IP: `{client_ip}`")
+if not uid and not _is_admin:
+    st.warning("No history link found. Run a scrape from the home page first — your personal link will appear automatically.")
+    st.stop()
 
 if not scrapes:
     st.info("No history yet — run your first scrape on the home page.")

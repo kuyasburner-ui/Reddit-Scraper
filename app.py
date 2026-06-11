@@ -23,15 +23,13 @@ def get_session_id():
         return "unknown"
 
 
-def get_client_ip():
-    try:
-        headers = st.context.headers
-        xff = headers.get("X-Forwarded-For", "")
-        if xff:
-            return xff.split(",")[0].strip()
-        return headers.get("X-Real-Ip", headers.get("Remote-Addr", "unknown"))
-    except Exception:
-        return "unknown"
+def get_or_create_uid():
+    uid = st.query_params.get("uid", "")
+    if not uid:
+        import uuid
+        uid = uuid.uuid4().hex[:12]
+        st.query_params["uid"] = uid
+    return uid
 
 
 def results_to_df(results):
@@ -177,7 +175,8 @@ if is_admin:
 
 # ── Normal view ───────────────────────────────────────────────────────────────
 
-navbar("home")
+uid = get_or_create_uid()
+navbar("home", uid=uid)
 
 hero(
     title="Reddit Scraper",
@@ -269,7 +268,7 @@ db.save_scrape(
     params={"num_posts": num_posts, "include_comments": include_comments},
     results=results,
     session_id=get_session_id(),
-    ip_address=get_client_ip(),
+    ip_address=uid,
 )
 
 success_banner(f"<strong>{len(results)} posts</strong> collected for &ldquo;{query}&rdquo;")
