@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
-from scrapers.reddit_scraper import scrape_stream
+from scrapers.reddit_scraper import search_posts, get_comments
 from styles import (
     inject_css, navbar, hero, section_header, success_banner,
     how_it_works, stats_bar, footer,
@@ -208,25 +208,49 @@ if not query.strip():
     st.error("Please enter a search query.")
     st.stop()
 
-results = []
-progress_bar = st.progress(0.0, text="Connecting to Reddit…")
-status = st.empty()
+import time, random
+
+results  = []
+_status  = st.empty()
+_pbar    = st.empty()
+
+# Phase 1 — find posts
+_status.markdown(
+    '<p style="color:#3a3a5a;font-size:0.85rem;margin:0;">Searching Reddit…</p>',
+    unsafe_allow_html=True,
+)
+_pbar.progress(0.0, text="Connecting to Reddit…")
 
 try:
-    for current, total, post in scrape_stream(query.strip(), num_posts, include_comments):
-        results.append(post)
-        progress_bar.progress(current / max(total, 1), text=f"Fetching {current} / {total}")
-        status.markdown(
-            f'<div style="font-family:\'DM Sans\',sans-serif;font-size:0.75rem;color:#3a3a5a;'
-            f'margin-top:2px;">&#9656; {post["title"][:80]}</div>',
-            unsafe_allow_html=True,
-        )
+    posts = search_posts(query.strip(), num_posts)
 except Exception as e:
     st.error(f"Scrape failed: {e}")
     st.stop()
 
-progress_bar.empty()
-status.empty()
+if not posts:
+    st.warning("No posts found — try a different query.")
+    st.stop()
+
+# Phase 2 — fetch comments per post
+total = len(posts)
+_pbar.progress(0.0, text=f"Found {total} posts — fetching details…")
+
+for i, post in enumerate(posts, 1):
+    if include_comments and post.get("id"):
+        time.sleep(random.uniform(0.3, 0.7))
+        post["comments"] = get_comments(post["id"])
+    else:
+        post["comments"] = []
+    results.append(post)
+    pct  = i / total
+    _status.markdown(
+        f'<p style="color:#3a3a5a;font-size:0.75rem;margin:0;">&#9656; {post["title"][:80]}</p>',
+        unsafe_allow_html=True,
+    )
+    _pbar.progress(pct, text=f"Post {i} of {total}")
+
+_status.empty()
+_pbar.empty()
 
 if not results:
     st.warning("No posts found — try a different query.")
