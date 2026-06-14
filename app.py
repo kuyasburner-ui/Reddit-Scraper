@@ -232,8 +232,9 @@ section_header("Configure Scan", "Set Your Search Parameters")
 mode = st.radio("Mode", ["Keyword Search", "Subreddit"], horizontal=True,
                 label_visibility="collapsed", key="scrape_mode")
 
-_SORT_OPTS = ["Top", "New", "Old", "Most Comments"]
-_TIME_OPTS = ["All Time", "This Year", "This Month", "This Week", "Today", "Last Hour"]
+_SEARCH_SORTS = ["Top", "New", "Old", "Most Comments"]
+_SUB_SORTS    = ["Hot", "New", "Top", "Rising", "Controversial"]
+_TIME_OPTS    = ["All Time", "This Year", "This Month", "This Week", "Today", "Last Hour"]
 
 with st.form("scrape_form"):
     if mode == "Keyword Search":
@@ -242,6 +243,7 @@ with st.form("scrape_form"):
             placeholder="e.g.  best protein powder  ·  perimenopause symptoms  ·  clogged pores",
         )
         subreddit = ""
+        sort_opts = _SEARCH_SORTS
     else:
         query = ""
         c_label, c_input = st.columns([0.07, 0.93])
@@ -255,10 +257,11 @@ with st.form("scrape_form"):
                 "Subreddit",
                 placeholder="e.g.  wallstreetbets  ·  fitness  ·  AskReddit",
             )
+        sort_opts = _SUB_SORTS
 
     col_s, col_t = st.columns(2)
     with col_s:
-        sort = st.radio("Sort", _SORT_OPTS, horizontal=True, index=0)
+        sort = st.radio("Sort", sort_opts, horizontal=True, index=0)
     with col_t:
         time_filter = st.radio("Time", _TIME_OPTS, horizontal=True, index=0)
 
