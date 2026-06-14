@@ -253,7 +253,7 @@ with st.form("scrape_form"):
                 "Subreddit",
                 placeholder="e.g.  wallstreetbets  ·  fitness  ·  AskReddit",
             )
-        sort = st.selectbox("Sort by", ["Top", "New"], index=0).lower()
+        sort = st.radio("Sort by", ["Top", "New"], horizontal=True, index=0).lower()
 
     col1, col2 = st.columns([3, 2])
     with col1:
