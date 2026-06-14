@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
-from scrapers.reddit_scraper import search_posts, get_comments
+from scrapers.reddit_scraper import search_posts, search_subreddit, get_comments
 from styles import (
     inject_css, navbar, hero, section_header, success_banner,
     how_it_works, stats_bar, footer,
@@ -230,10 +230,23 @@ hero(
 section_header("Configure Scan", "Set Your Search Parameters")
 
 with st.form("scrape_form"):
-    query = st.text_input(
-        "Search query",
-        placeholder="e.g.  best protein powder  ·  perimenopause symptoms  ·  clogged pores",
-    )
+    mode = st.radio("Mode", ["Keyword Search", "Subreddit"], horizontal=True, label_visibility="collapsed")
+
+    if mode == "Keyword Search":
+        query = st.text_input(
+            "Search query",
+            placeholder="e.g.  best protein powder  ·  perimenopause symptoms  ·  clogged pores",
+        )
+        subreddit = ""
+        sort = "top"
+    else:
+        subreddit = st.text_input(
+            "Subreddit",
+            placeholder="e.g.  wallstreetbets  ·  r/fitness  ·  AskReddit",
+        )
+        query = ""
+        sort = st.selectbox("Sort by", ["Top", "New"], index=0).lower()
+
     col1, col2 = st.columns([3, 2])
     with col1:
         num_posts = st.slider("Posts to retrieve", min_value=1, max_value=1000, value=25, step=5)
@@ -254,23 +267,31 @@ if not submitted:
 
 # ── Run scrape ────────────────────────────────────────────────────────────────
 
-if not query.strip():
+if mode == "Keyword Search" and not query.strip():
     st.error("Please enter a search query.")
     st.stop()
+if mode == "Subreddit" and not subreddit.strip():
+    st.error("Please enter a subreddit name.")
+    st.stop()
+
+# Use the subreddit name or query as the display label
+label = f"r/{subreddit.lstrip('r/').strip()}" if mode == "Subreddit" else query.strip()
 
 results  = []
 _status  = st.empty()
 _pbar    = st.empty()
 
-# Phase 1 — find posts
 _status.markdown(
-    '<p style="color:#3a3a5a;font-size:0.85rem;margin:0;">Searching Reddit…</p>',
+    '<p style="color:#3a3a5a;font-size:0.85rem;margin:0;">Connecting to Reddit…</p>',
     unsafe_allow_html=True,
 )
 _pbar.progress(0.0, text="Connecting to Reddit…")
 
 try:
-    posts = search_posts(query.strip(), num_posts)
+    if mode == "Subreddit":
+        posts = search_subreddit(subreddit.strip(), num_posts, sort=sort)
+    else:
+        posts = search_posts(query.strip(), num_posts)
 except Exception as e:
     st.error(f"Scrape failed: {e}")
     st.stop()
@@ -304,19 +325,19 @@ if not results:
     st.stop()
 
 db.save_scrape(
-    query=query.strip(),
-    params={"num_posts": num_posts, "include_comments": include_comments},
+    query=label,
+    params={"num_posts": num_posts, "include_comments": include_comments, "mode": mode},
     results=results,
     session_id=get_session_id(),
     ip_address=uid,
 )
 
-success_banner(f"<strong>{len(results)} posts</strong> collected for &ldquo;{query}&rdquo;")
+success_banner(f"<strong>{len(results)} posts</strong> collected for &ldquo;{label}&rdquo;")
 
 # ── Export ────────────────────────────────────────────────────────────────────
 
 section_header("Export Data")
-download_buttons(query.strip(), results, key_prefix="main")
+download_buttons(label, results, key_prefix="main")
 
 # ── Results table ─────────────────────────────────────────────────────────────
 

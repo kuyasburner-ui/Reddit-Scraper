@@ -26,6 +26,30 @@ def _get(path, params, retries=3):
             time.sleep((attempt + 1) * 3)
 
 
+def search_subreddit(subreddit, limit, sort="top"):
+    subreddit = subreddit.lstrip("r/").strip()
+    sort_type = "score" if sort == "top" else "created_utc"
+    resp = _get("/submission/", {
+        "subreddit": subreddit,
+        "size":      min(limit, 100),
+        "sort":      "desc",
+        "sort_type": sort_type,
+    })
+    posts = []
+    for p in resp.json().get("data", [])[:limit]:
+        posts.append({
+            "id":        p.get("id", ""),
+            "title":     p.get("title", ""),
+            "url":       p.get("url", ""),
+            "permalink": p.get("permalink", ""),
+            "author":    p.get("author", "[deleted]"),
+            "subreddit": p.get("subreddit", ""),
+            "score":     str(p.get("score", 0)),
+            "selftext":  p.get("selftext", ""),
+        })
+    return posts
+
+
 def search_posts(query, limit):
     resp = _get("/submission/", {
         "q":         query,
