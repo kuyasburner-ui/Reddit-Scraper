@@ -12,25 +12,17 @@ _SEARCH_SORT_MAP = {
     "Most Comments": ("num_comments", "desc"),
 }
 
-# ── Reddit native — used for subreddit browsing ───────────────────────────────
-_RD_BASE    = "https://www.reddit.com"
-_RD_HEADERS = {"User-Agent": "RedditScraper/1.0 (Streamlit cloud app)", "Accept": "application/json"}
-
-_SUB_SORT_ENDPOINT = {
-    "Hot":           "hot",
-    "New":           "new",
-    "Top":           "top",
-    "Rising":        "rising",
-    "Controversial": "controversial",
-}
-
-_TIME_PERIOD = {
-    "Last Hour":  "hour",
-    "Today":      "day",
-    "This Week":  "week",
-    "This Month": "month",
-    "This Year":  "year",
-    "All Time":   "all",
+# ── Subreddit sort → Pullpush params ─────────────────────────────────────────
+# (sort_type, sort_dir, fixed_after_seconds or "time_filter" or None)
+# "time_filter" = use the user's time_filter selection
+# a number       = fixed recent window (e.g. Rising ≈ last 6 hours)
+# None           = no time constraint
+_SUB_SORT_MAP = {
+    "Hot":           ("score",        "desc", None),
+    "New":           ("created_utc",  "desc", None),
+    "Top":           ("score",        "desc", "time_filter"),
+    "Rising":        ("score",        "desc", 21600),
+    "Controversial": ("num_comments", "desc", "time_filter"),
 }
 
 _TIME_DELTA = {
@@ -66,44 +58,9 @@ def _pp_get(path, params, retries=3):
             _time.sleep((attempt + 1) * 3)
 
 
-def _rd_get(url, params, retries=3):
-    for attempt in range(retries):
-        try:
-            resp = requests.get(
-                url, params=params,
-                headers=_RD_HEADERS, timeout=20,
-            )
-            if resp.status_code == 429:
-                _time.sleep((attempt + 1) * 10)
-                continue
-            resp.raise_for_status()
-            return resp
-        except requests.exceptions.RequestException:
-            if attempt == retries - 1:
-                raise
-            _time.sleep((attempt + 1) * 3)
-
-
 def _parse_pp(data, limit):
     posts = []
     for p in data[:limit]:
-        posts.append({
-            "id":        p.get("id", ""),
-            "title":     p.get("title", ""),
-            "url":       p.get("url", ""),
-            "permalink": p.get("permalink", ""),
-            "author":    p.get("author", "[deleted]"),
-            "subreddit": p.get("subreddit", ""),
-            "score":     str(p.get("score", 0)),
-            "selftext":  p.get("selftext", ""),
-        })
-    return posts
-
-
-def _parse_rd(children, limit):
-    posts = []
-    for child in children[:limit]:
-        p = child.get("data", {})
         posts.append({
             "id":        p.get("id", ""),
             "title":     p.get("title", ""),
@@ -136,16 +93,46 @@ def search_posts(query, limit, sort="Top", time_filter="All Time"):
 
 
 def search_subreddit(subreddit, limit, sort="Hot", time_filter="All Time"):
-    """Subreddit browse via Reddit's native JSON API (real-time data)."""
-    subreddit    = subreddit.lstrip("r/").strip()
-    endpoint     = _SUB_SORT_ENDPOINT.get(sort, "hot")
-    url          = f"{_RD_BASE}/r/{subreddit}/{endpoint}.json"
-    params       = {"limit": min(limit, 100), "raw_json": 1}
-    if sort in ("Top", "Controversial"):
-        params["t"] = _TIME_PERIOD.get(time_filter, "all")
-    resp         = _rd_get(url, params)
-    children     = resp.json().get("data", {}).get("children", [])
-    return _parse_rd(children, limit)
+    """Subreddit browse via Pullpush archive (cloud-IP safe)."""
+    subreddit = subreddit.lstrip("r/").strip()
+    sort_type, sort_dir, after_mode = _SUB_SORT_MAP.get(sort, ("score", "desc", None))
+
+    if after_mode == "time_filter":
+        after = _after_ts(time_filter)
+    elif isinstance(after_mode, int):
+        after = int(_time.time()) - after_mode
+    else:
+        after = None
+
+    all_posts = []
+    remaining = limit
+    before = None
+
+    while remaining > 0:
+        params = {
+            "subreddit": subreddit,
+            "size":      min(remaining, 100),
+            "sort":      sort_dir,
+            "sort_type": sort_type,
+        }
+        if after:
+            params["after"] = after
+        if before:
+            params["before"] = before
+
+        resp = _pp_get("/submission/", params)
+        batch = resp.json().get("data", [])
+        if not batch:
+            break
+
+        all_posts.extend(batch)
+        remaining -= len(batch)
+
+        if len(batch) < 100:
+            break
+        before = batch[-1].get("created_utc")
+
+    return _parse_pp(all_posts, limit)
 
 
 def get_comments(post_id, max_comments=20):
