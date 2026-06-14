@@ -92,8 +92,9 @@ def search_posts(query, limit, sort="Top", time_filter="All Time"):
     return _parse_pp(resp.json().get("data", []), limit)
 
 
-def search_subreddit(subreddit, limit, sort="Hot", time_filter="All Time"):
-    """Subreddit browse via Pullpush archive (cloud-IP safe)."""
+def search_subreddit(subreddit, limit, sort="Hot", time_filter="All Time", query=""):
+    """Subreddit browse via Pullpush archive (cloud-IP safe).
+    Optional query= filters posts by keyword within the subreddit."""
     subreddit = subreddit.lstrip("r/").strip()
     sort_type, sort_dir, after_mode = _SUB_SORT_MAP.get(sort, ("score", "desc", None))
 
@@ -115,6 +116,8 @@ def search_subreddit(subreddit, limit, sort="Hot", time_filter="All Time"):
             "sort":      sort_dir,
             "sort_type": sort_type,
         }
+        if query.strip():
+            params["q"] = query.strip()
         if after:
             params["after"] = after
         if before:

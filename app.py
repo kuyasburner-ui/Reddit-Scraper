@@ -243,6 +243,7 @@ with st.form("scrape_form"):
             placeholder="e.g.  best protein powder  ·  perimenopause symptoms  ·  clogged pores",
         )
         subreddit = ""
+        within_query = ""
         sort_opts = _SEARCH_SORTS
     else:
         query = ""
@@ -257,6 +258,10 @@ with st.form("scrape_form"):
                 "Subreddit",
                 placeholder="e.g.  wallstreetbets  ·  fitness  ·  AskReddit",
             )
+        within_query = st.text_input(
+            "Search within subreddit (optional)",
+            placeholder="e.g.  study tips  ·  best exam  ·  resource",
+        )
         sort_opts = _SUB_SORTS
 
     col_s, col_t = st.columns(2)
@@ -293,7 +298,11 @@ if mode == "Subreddit" and not subreddit.strip():
     st.stop()
 
 # Use the subreddit name or query as the display label
-label = f"r/{subreddit.lstrip('r/').strip()}" if mode == "Subreddit" else query.strip()
+if mode == "Subreddit":
+    sub_clean = subreddit.lstrip("r/").strip()
+    label = f"r/{sub_clean}: {within_query.strip()}" if within_query.strip() else f"r/{sub_clean}"
+else:
+    label = query.strip()
 
 results  = []
 _status  = st.empty()
@@ -307,7 +316,7 @@ _pbar.progress(0.0, text="Connecting to Reddit…")
 
 try:
     if mode == "Subreddit":
-        posts = search_subreddit(subreddit.strip(), num_posts, sort=sort, time_filter=time_filter)
+        posts = search_subreddit(subreddit.strip(), num_posts, sort=sort, time_filter=time_filter, query=within_query)
     else:
         posts = search_posts(query.strip(), num_posts, sort=sort, time_filter=time_filter)
 except Exception as e:
