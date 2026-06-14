@@ -229,9 +229,10 @@ hero(
 
 section_header("Configure Scan", "Set Your Search Parameters")
 
-with st.form("scrape_form"):
-    mode = st.radio("Mode", ["Keyword Search", "Subreddit"], horizontal=True, label_visibility="collapsed")
+mode = st.radio("Mode", ["Keyword Search", "Subreddit"], horizontal=True,
+                label_visibility="collapsed", key="scrape_mode")
 
+with st.form("scrape_form"):
     if mode == "Keyword Search":
         query = st.text_input(
             "Search query",
@@ -240,11 +241,18 @@ with st.form("scrape_form"):
         subreddit = ""
         sort = "top"
     else:
-        subreddit = st.text_input(
-            "Subreddit",
-            placeholder="e.g.  wallstreetbets  ·  r/fitness  ·  AskReddit",
-        )
         query = ""
+        c_label, c_input = st.columns([0.07, 0.93])
+        with c_label:
+            st.markdown(
+                '<div style="padding-top:2.1rem;font-weight:600;color:#00ff41;font-size:1rem;">r/</div>',
+                unsafe_allow_html=True,
+            )
+        with c_input:
+            subreddit = st.text_input(
+                "Subreddit",
+                placeholder="e.g.  wallstreetbets  ·  fitness  ·  AskReddit",
+            )
         sort = st.selectbox("Sort by", ["Top", "New"], index=0).lower()
 
     col1, col2 = st.columns([3, 2])
