@@ -232,6 +232,9 @@ section_header("Configure Scan", "Set Your Search Parameters")
 mode = st.radio("Mode", ["Keyword Search", "Subreddit"], horizontal=True,
                 label_visibility="collapsed", key="scrape_mode")
 
+_SORT_OPTS = ["Top", "New", "Old", "Most Comments"]
+_TIME_OPTS = ["All Time", "This Year", "This Month", "This Week", "Today", "Last Hour"]
+
 with st.form("scrape_form"):
     if mode == "Keyword Search":
         query = st.text_input(
@@ -239,7 +242,6 @@ with st.form("scrape_form"):
             placeholder="e.g.  best protein powder  ·  perimenopause symptoms  ·  clogged pores",
         )
         subreddit = ""
-        sort = "top"
     else:
         query = ""
         c_label, c_input = st.columns([0.07, 0.93])
@@ -253,7 +255,12 @@ with st.form("scrape_form"):
                 "Subreddit",
                 placeholder="e.g.  wallstreetbets  ·  fitness  ·  AskReddit",
             )
-        sort = st.radio("Sort by", ["Top", "New"], horizontal=True, index=0).lower()
+
+    col_s, col_t = st.columns(2)
+    with col_s:
+        sort = st.radio("Sort", _SORT_OPTS, horizontal=True, index=0)
+    with col_t:
+        time_filter = st.radio("Time", _TIME_OPTS, horizontal=True, index=0)
 
     col1, col2 = st.columns([3, 2])
     with col1:
@@ -297,9 +304,9 @@ _pbar.progress(0.0, text="Connecting to Reddit…")
 
 try:
     if mode == "Subreddit":
-        posts = search_subreddit(subreddit.strip(), num_posts, sort=sort)
+        posts = search_subreddit(subreddit.strip(), num_posts, sort=sort, time_filter=time_filter)
     else:
-        posts = search_posts(query.strip(), num_posts)
+        posts = search_posts(query.strip(), num_posts, sort=sort, time_filter=time_filter)
 except Exception as e:
     st.error(f"Scrape failed: {e}")
     st.stop()
@@ -334,7 +341,7 @@ if not results:
 
 db.save_scrape(
     query=label,
-    params={"num_posts": num_posts, "include_comments": include_comments, "mode": mode},
+    params={"num_posts": num_posts, "include_comments": include_comments, "mode": mode, "sort": sort, "time_filter": time_filter},
     results=results,
     session_id=get_session_id(),
     ip_address=uid,

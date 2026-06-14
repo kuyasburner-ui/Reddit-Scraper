@@ -1,9 +1,30 @@
 import requests
-import time
+import time as _time
 
-_API = "https://api.pullpush.io/reddit/search"
-_UA  = "RedditScraper/1.0"
+_API     = "https://api.pullpush.io/reddit/search"
+_UA      = "RedditScraper/1.0"
 _HEADERS = {"User-Agent": _UA, "Accept": "application/json"}
+
+_SORT_MAP = {
+    "Top":           ("score",       "desc"),
+    "New":           ("created_utc", "desc"),
+    "Old":           ("created_utc", "asc"),
+    "Most Comments": ("num_comments","desc"),
+}
+
+_TIME_MAP = {
+    "Last Hour":  3600,
+    "Today":      86400,
+    "This Week":  604800,
+    "This Month": 2592000,
+    "This Year":  31536000,
+    "All Time":   None,
+}
+
+
+def _after_ts(period):
+    delta = _TIME_MAP.get(period)
+    return int(_time.time()) - delta if delta else None
 
 
 def _get(path, params, retries=3):
@@ -16,27 +37,19 @@ def _get(path, params, retries=3):
                 timeout=20,
             )
             if resp.status_code == 429:
-                time.sleep((attempt + 1) * 10)
+                _time.sleep((attempt + 1) * 10)
                 continue
             resp.raise_for_status()
             return resp
         except requests.exceptions.RequestException:
             if attempt == retries - 1:
                 raise
-            time.sleep((attempt + 1) * 3)
+            _time.sleep((attempt + 1) * 3)
 
 
-def search_subreddit(subreddit, limit, sort="top"):
-    subreddit = subreddit.lstrip("r/").strip()
-    sort_type = "score" if sort == "top" else "created_utc"
-    resp = _get("/submission/", {
-        "subreddit": subreddit,
-        "size":      min(limit, 100),
-        "sort":      "desc",
-        "sort_type": sort_type,
-    })
+def _parse_posts(data, limit):
     posts = []
-    for p in resp.json().get("data", [])[:limit]:
+    for p in data[:limit]:
         posts.append({
             "id":        p.get("id", ""),
             "title":     p.get("title", ""),
@@ -50,26 +63,35 @@ def search_subreddit(subreddit, limit, sort="top"):
     return posts
 
 
-def search_posts(query, limit):
-    resp = _get("/submission/", {
+def search_posts(query, limit, sort="Top", time_filter="All Time"):
+    sort_type, sort_dir = _SORT_MAP.get(sort, ("score", "desc"))
+    params = {
         "q":         query,
         "size":      min(limit, 100),
-        "sort":      "desc",
-        "sort_type": "score",
-    })
-    posts = []
-    for p in resp.json().get("data", [])[:limit]:
-        posts.append({
-            "id":        p.get("id", ""),
-            "title":     p.get("title", ""),
-            "url":       p.get("url", ""),
-            "permalink": p.get("permalink", ""),
-            "author":    p.get("author", "[deleted]"),
-            "subreddit": p.get("subreddit", ""),
-            "score":     str(p.get("score", 0)),
-            "selftext":  p.get("selftext", ""),
-        })
-    return posts
+        "sort":      sort_dir,
+        "sort_type": sort_type,
+    }
+    after = _after_ts(time_filter)
+    if after:
+        params["after"] = after
+    resp = _get("/submission/", params)
+    return _parse_posts(resp.json().get("data", []), limit)
+
+
+def search_subreddit(subreddit, limit, sort="Top", time_filter="All Time"):
+    subreddit = subreddit.lstrip("r/").strip()
+    sort_type, sort_dir = _SORT_MAP.get(sort, ("score", "desc"))
+    params = {
+        "subreddit": subreddit,
+        "size":      min(limit, 100),
+        "sort":      sort_dir,
+        "sort_type": sort_type,
+    }
+    after = _after_ts(time_filter)
+    if after:
+        params["after"] = after
+    resp = _get("/submission/", params)
+    return _parse_posts(resp.json().get("data", []), limit)
 
 
 def get_comments(post_id, max_comments=20):
@@ -93,17 +115,3 @@ def get_comments(post_id, max_comments=20):
         return comments
     except Exception:
         return []
-
-
-def scrape_stream(query, num_posts, include_comments):
-    """Generator yielding (current_index, total, post_dict) for live UI updates."""
-    posts = search_posts(query, num_posts)
-    total = len(posts)
-
-    for i, post in enumerate(posts, 1):
-        if include_comments and post.get("id"):
-            post["comments"] = get_comments(post["id"])
-        else:
-            post["comments"] = []
-
-        yield i, total, post
