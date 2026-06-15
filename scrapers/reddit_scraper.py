@@ -40,7 +40,7 @@ def _after_ts(period):
     return int(_time.time()) - delta if delta else None
 
 
-def _pp_get(path, params, retries=3):
+def _pp_get(path, params, retries=5):
     for attempt in range(retries):
         try:
             resp = requests.get(
@@ -48,7 +48,7 @@ def _pp_get(path, params, retries=3):
                 headers=_PP_HEADERS, timeout=20,
             )
             if resp.status_code == 429:
-                _time.sleep((attempt + 1) * 10)
+                _time.sleep((attempt + 1) * 12)
                 continue
             resp.raise_for_status()
             return resp
@@ -56,6 +56,9 @@ def _pp_get(path, params, retries=3):
             if attempt == retries - 1:
                 raise
             _time.sleep((attempt + 1) * 3)
+    raise requests.exceptions.RequestException(
+        "Pullpush API rate limited — too many requests. Try fewer posts or wait a moment."
+    )
 
 
 def _parse_pp(data, limit):
@@ -123,6 +126,8 @@ def search_subreddit(subreddit, limit, sort="Hot", time_filter="All Time", query
         if before:
             params["before"] = before
 
+        if all_posts:
+            _time.sleep(1.5)
         resp = _pp_get("/submission/", params)
         batch = resp.json().get("data", [])
         if not batch:
